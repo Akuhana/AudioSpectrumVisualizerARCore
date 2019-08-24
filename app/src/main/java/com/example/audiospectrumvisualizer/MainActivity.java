@@ -28,13 +28,23 @@ public class MainActivity extends AppCompatActivity {
     private ModelRenderable cubeRenderable;
     private ArFragment arFragment;
 
+    enum PlaybackState
+    {
+        Playing,
+        Paused
+    }
+    private PlaybackState playbackState;
     private MediaPlayer mediaPlayer;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        // Initialize the variables
         arFragment = (ArFragment) getSupportFragmentManager().findFragmentById(R.id.ux_fragment);
+        mediaPlayer = MediaPlayer.create(getApplicationContext(), R.raw.music1);
+        playbackState = PlaybackState.Paused;
 
 
         //Create a sphere with a given color, material, size and position
@@ -46,6 +56,7 @@ public class MainActivity extends AppCompatActivity {
                         });
 
 
+        // When clicked on a plane in the app, a certain object (cube in this case) will be spawned in place
         arFragment.setOnTapArPlaneListener(
                 (HitResult hitResult, Plane plane, MotionEvent motionEvent) ->
                 {
@@ -65,9 +76,44 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
-    public void playMusic(View view)
+    @Override
+    protected void onResume()
     {
-        mediaPlayer = MediaPlayer.create(getApplicationContext(), R.raw.music1);
-        mediaPlayer.start();
+        super.onResume();
     }
+
+    @Override
+    protected void onPause()
+    {
+        super.onPause();
+        mediaPlayer.stop();
+        mediaPlayer.release();
+    }
+
+    public void playbackStateChanger(View view)
+    {
+        Button playbackButton = findViewById(R.id.play_button);
+        if(playbackState == PlaybackState.Paused)
+        {
+            playMusic(playbackButton);
+        }
+        else
+        {
+            pauseMusic(playbackButton);
+        }
+    }
+    public void playMusic(Button playButton)
+    {
+        mediaPlayer.start();
+        playbackState = PlaybackState.Playing;
+        playButton.setText("Pause");
+    }
+
+    public void pauseMusic(Button playButton)
+    {
+        mediaPlayer.pause();
+        playbackState = PlaybackState.Paused;
+        playButton.setText("Play");
+    }
+
 }
