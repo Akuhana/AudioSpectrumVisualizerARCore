@@ -26,6 +26,7 @@ import com.google.ar.core.Anchor;
 import com.google.ar.core.HitResult;
 import com.google.ar.core.Plane;
 import com.google.ar.sceneform.AnchorNode;
+import com.google.ar.sceneform.Node;
 import com.google.ar.sceneform.math.Vector3;
 import com.google.ar.sceneform.rendering.MaterialFactory;
 import com.google.ar.sceneform.rendering.ModelRenderable;
@@ -34,6 +35,7 @@ import com.google.ar.sceneform.rendering.ViewRenderable;
 import com.google.ar.sceneform.ux.ArFragment;
 import com.google.ar.sceneform.ux.TransformableNode;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -41,8 +43,15 @@ import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
-    private ModelRenderable cubeRenderable;
+
     private ArFragment arFragment;
+
+    // Cube variables
+    private ModelRenderable cubeRenderable;
+    private AnchorNode anchorNode;
+    private Node cubeNode;
+    private float cubeLastLocalScale = 0f;
+
 
     enum PlaybackState
     {
@@ -230,11 +239,46 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
-            public void onFftDataCapture(Visualizer visualizer, byte[] bytes, int i) {
-                FFTData = bytes;
-                Log.i("FFT:", String.format("0x%20x", bytes[0]));
+            public void onFftDataCapture(Visualizer visualizer, byte[] bytes, int o) {
+                // Obtain magnitude and phase values
+                int n = bytes.length;
+                float[] magnitudes = new float[n / 2 + 1];
+                float[] phases = new float[n / 2 + 1];
+                magnitudes[0] = (float)Math.abs(bytes[0]);      // DC
+                magnitudes[n / 2] = (float)Math.abs(bytes[1]);  // Nyquist
+                phases[0] = phases[n / 2] = 0;
+                for (int k = 1; k < n / 2; k++) {
+                    int i = k * 2;
+                    magnitudes[k] = (float)Math.hypot(bytes[i], bytes[i + 1]);
+                    phases[k] = (float)Math.atan2(bytes[i + 1], bytes[i]);
+                }
+
+                if(cubeRenderable != null && cubeNode != null)
+                {
+                    double lowFrequencyAverage = 0f;
+                    int frequencySamples = 10;
+
+                    // Get the average of the lower frequencies
+                    for (int a = 0; a < frequencySamples; a++)
+                    {
+                        lowFrequencyAverage += magnitudes[a];
+                    }
+                    lowFrequencyAverage /= 10*frequencySamples;
+
+                    Log.i("MAGNITUDES: ", Double.toString(Math.exp(1 + lowFrequencyAverage)));
+                    Log.i("INFO: ", "set local scale" + cubeNode.getLocalScale());
+
+                    float cubeScale = lerp(cubeLastLocalScale, (float) (1f + 1f*lowFrequencyAverage), 0.7f);
+                    cubeNode.setLocalScale(new Vector3(
+                            cubeScale,
+                            cubeScale,
+                            cubeScale));
+                    cubeLastLocalScale = cubeScale;
+                }
             }
             }, Visualizer.getMaxCaptureRate()/2, false, true);
+
+        // Enable the visualizer
         visualizer.setEnabled(true);
         // Once the song has ended, set disable the visualizer
         mediaPlayer.setOnCompletionListener(mediaPlayer -> visualizer.setEnabled(false));
@@ -257,15 +301,23 @@ public class MainActivity extends AppCompatActivity {
 
                     // Create the anchor
                     Anchor anchor = hitResult.createAnchor();
-                    AnchorNode anchorNode = new AnchorNode(anchor);
-                    anchorNode.setParent(arFragment.getArSceneView().getScene());
+                    if(anchorNode == null)
+                    {
+                        anchorNode = new AnchorNode(anchor);
+                        anchorNode.setParent(arFragment.getArSceneView().getScene());
 
-                    TransformableNode cubeNode = new TransformableNode(arFragment.getTransformationSystem());
-                    cubeNode.setParent(anchorNode);
-                    cubeNode.setRenderable(cubeRenderable);
-                    cubeNode.select();
+                        cubeNode = new Node();
+                        cubeNode.setParent(anchorNode);
+                        cubeNode.setRenderable(cubeRenderable);
+                        cubeNode.setLocalScale(Vector3.one());
+                    }
                 }
         );
+    }
+
+    private float lerp(float a, float b, float f)
+    {
+        return a + f * (b - a);
     }
 
     @Override
