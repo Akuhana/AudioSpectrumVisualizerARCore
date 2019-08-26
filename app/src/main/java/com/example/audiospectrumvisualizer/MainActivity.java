@@ -60,116 +60,12 @@ public class MainActivity extends AppCompatActivity {
     }
     private PlaybackState playbackState;
     private MediaPlayer mediaPlayer;
-    private Visualizer visualizer;
-    private byte[] FFTData;
+    private Visualizer visualizer = null;
 
 
     private static final int PERMISSIONS_REQUEST_CODE = 200;
     private String[] permissions = {Manifest.permission.RECORD_AUDIO};
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        if (requestCode == PERMISSIONS_REQUEST_CODE)
-        {
-            HashMap<String, Integer> permissionResults = new HashMap<>();
-            int deniedCount = 0;
-
-            // Gather permission grant results
-            for (int i=0; i<grantResults.length; i++)
-            {
-                // Add only permissions which are denied
-                if (grantResults[i] == PackageManager.PERMISSION_DENIED)
-                {
-                    permissionResults.put(permissions[i], grantResults[i]);
-                    deniedCount++;
-                }
-            }
-
-            // Check if all permissions are granted
-            if (deniedCount == 0)
-            {
-                // Proceed ahead with the app
-                InitializeApp();
-            }
-            // Atleast one or all permissions are denied
-            else
-            {
-                for (Map.Entry<String, Integer> entry : permissionResults.entrySet())
-                {
-                    String permName = entry.getKey();
-                    int permResult = entry.getValue();
-
-                    // permission is denied (this is the first time, when "never ask again" is not checked)
-                    // so ask again explaining the usage of permission
-                    // shouldShowRequestPermissionRationale will return true
-                    if (ActivityCompat.shouldShowRequestPermissionRationale(this, permName))
-                    {
-                        // Show dialog of explanation
-                        showDialog("", "This app needs Location and Storage permissions to work wihout any issues and problems.",
-                                "Yes, Grant permissions",
-                                new DialogInterface.OnClickListener() {
-                                    @Override
-                                    public void onClick(DialogInterface dialogInterface, int i) {
-                                        dialogInterface.dismiss();
-                                        checkAndRequestPermissions();
-                                    }
-                                },
-                                "No, Exit app", new DialogInterface.OnClickListener() {
-                                    @Override
-                                    public void onClick(DialogInterface dialogInterface, int i) {
-                                        dialogInterface.dismiss();
-                                        finish();
-                                    }
-                                }, false);
-                    }
-                    //permission is denied (and never ask again is  checked)
-                    //shouldShowRequestPermissionRationale will return false
-                    else
-                    {
-                        // Ask user to go to settings and manually allow permissions
-                        showDialog("", "You have denied some permissions to the app. Please allow all permissions at [Setting] > [Permissions] screen",
-                                "Go to Settings",
-                                new DialogInterface.OnClickListener() {
-                                    @Override
-                                    public void onClick(DialogInterface dialogInterface, int i) {
-                                        dialogInterface.dismiss();
-                                        // Go to app settings
-                                        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                                Uri.fromParts("package", getPackageName(), null));
-                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                        startActivity(intent);
-                                        finish();
-                                    }
-                                },
-                                "No, Exit app", new DialogInterface.OnClickListener() {
-                                    @Override
-                                    public void onClick(DialogInterface dialogInterface, int i) {
-                                        dialogInterface.dismiss();
-                                        finish();
-                                    }
-                                }, false);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    public AlertDialog showDialog(String title, String msg, String positiveLabel,
-                                  DialogInterface.OnClickListener positiveOnClick,
-                                  String negativeLabel, DialogInterface.OnClickListener negativeOnClick,
-                                  boolean isCancelAble)
-    {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle(title);
-        builder.setCancelable(isCancelAble);
-        builder.setMessage(msg);
-        builder.setPositiveButton(positiveLabel, positiveOnClick);
-        builder.setNegativeButton(negativeLabel, negativeOnClick);
-
-        AlertDialog alert = builder.create();
-        alert.show();
-        return alert;
-    }
 
     public boolean checkAndRequestPermissions()
     {
@@ -201,24 +97,10 @@ public class MainActivity extends AppCompatActivity {
 
 
         //Check if permission to record audio is granted
-        if(ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
-        {
-            // Show an explanation why permission is needed
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
-                    Manifest.permission.RECORD_AUDIO)) {
-                InitializeApp();
-            } else {
-                // No explanation needed; request the permission
-                ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.READ_CONTACTS},
-                        PERMISSIONS_REQUEST_CODE);
-
-            }
-        } else
+        if(ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
         {
             InitializeApp();
         }
-
 
     }
 
@@ -228,58 +110,9 @@ public class MainActivity extends AppCompatActivity {
         arFragment = (ArFragment) getSupportFragmentManager().findFragmentById(R.id.ux_fragment);
         mediaPlayer = MediaPlayer.create(getApplicationContext(), R.raw.music1);
         playbackState = PlaybackState.Paused;
-        visualizer = new Visualizer(mediaPlayer.getAudioSessionId());
-        visualizer.setCaptureSize(256);
 
-        // Get the FFT date and save it in FFTData variable
-        visualizer.setDataCaptureListener(new Visualizer.OnDataCaptureListener() {
-            @Override
-            public void onWaveFormDataCapture(Visualizer visualizer, byte[] bytes, int i) {
+        startVisualizer();
 
-            }
-
-            @Override
-            public void onFftDataCapture(Visualizer visualizer, byte[] bytes, int o) {
-                // Obtain magnitude and phase values
-                int n = bytes.length;
-                float[] magnitudes = new float[n / 2 + 1];
-                float[] phases = new float[n / 2 + 1];
-                magnitudes[0] = (float)Math.abs(bytes[0]);      // DC
-                magnitudes[n / 2] = (float)Math.abs(bytes[1]);  // Nyquist
-                phases[0] = phases[n / 2] = 0;
-                for (int k = 1; k < n / 2; k++) {
-                    int i = k * 2;
-                    magnitudes[k] = (float)Math.hypot(bytes[i], bytes[i + 1]);
-                    phases[k] = (float)Math.atan2(bytes[i + 1], bytes[i]);
-                }
-
-                if(cubeRenderable != null && cubeNode != null)
-                {
-                    double lowFrequencyAverage = 0f;
-                    int frequencySamples = 10;
-
-                    // Get the average of the lower frequencies
-                    for (int a = 0; a < frequencySamples; a++)
-                    {
-                        lowFrequencyAverage += magnitudes[a];
-                    }
-                    lowFrequencyAverage /= 10*frequencySamples;
-
-                    Log.i("MAGNITUDES: ", Double.toString(Math.exp(1 + lowFrequencyAverage)));
-                    Log.i("INFO: ", "set local scale" + cubeNode.getLocalScale());
-
-                    float cubeScale = lerp(cubeLastLocalScale, (float) (1f + 1f*lowFrequencyAverage), 0.7f);
-                    cubeNode.setLocalScale(new Vector3(
-                            cubeScale,
-                            cubeScale,
-                            cubeScale));
-                    cubeLastLocalScale = cubeScale;
-                }
-            }
-            }, Visualizer.getMaxCaptureRate()/2, false, true);
-
-        // Enable the visualizer
-        visualizer.setEnabled(true);
         // Once the song has ended, set disable the visualizer
         mediaPlayer.setOnCompletionListener(mediaPlayer -> visualizer.setEnabled(false));
 
@@ -315,6 +148,58 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
+    private void startVisualizer()
+    {
+        visualizer = new Visualizer(mediaPlayer.getAudioSessionId());
+        visualizer.setCaptureSize(visualizer.getCaptureSize());
+
+        // Get the FFT date and save it in FFTData variable
+        visualizer.setDataCaptureListener(new Visualizer.OnDataCaptureListener() {
+            @Override
+            public void onWaveFormDataCapture(Visualizer visualizer, byte[] bytes, int i) {
+                if(cubeRenderable != null && cubeNode != null)
+                {
+                    float lowFrequencyAverage = 0f;
+                    float frequencySamples = 32;
+
+                    float div = bytes.length / 256;
+
+
+                    for (int a = 0; a < frequencySamples; a++)
+                    {
+                        int bytePos = (int) Math.ceil(a * div);
+                        int byteVal = Math.abs((byte) (unsignedToBytes(bytes[bytePos])));
+                        lowFrequencyAverage += byteVal;
+                    }
+                    lowFrequencyAverage /= 100*frequencySamples;
+
+                    float cubeScale = lerp(1f + cubeLastLocalScale,(1f + lowFrequencyAverage), 0.2f);
+                    Log.i("MAGNITUDES: ", Float.toString(cubeScale));
+                    cubeNode.setLocalScale(new Vector3(
+                            cubeScale,
+                            cubeScale,
+                            cubeScale));
+                    cubeLastLocalScale = cubeScale-1;
+                }
+
+            }
+
+            @Override
+            public void onFftDataCapture(Visualizer visualizer, byte[] bytes, int o) {
+
+            }
+        }, Visualizer.getMaxCaptureRate(), true, false);
+
+        // Enable the visualizer
+        visualizer.setEnabled(true);
+    }
+
+    // Convert 8-Bit unsigned into normal byte
+    public static int unsignedToBytes(byte b) {
+        return b & 0xFF;
+    }
+
+    // Linear interpolation between who values.
     private float lerp(float a, float b, float f)
     {
         return a + f * (b - a);
@@ -324,16 +209,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume()
     {
         super.onResume();
+        checkAndRequestPermissions();
     }
 
     @Override
     protected void onPause()
     {
-        if(visualizer != null)
-        {
-            visualizer.setEnabled(false);
-            visualizer.release();
-        }
+
         super.onPause();
         //mediaPlayer.stop();
         //mediaPlayer.release();
